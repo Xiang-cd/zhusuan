@@ -30,8 +30,8 @@ if __name__ == "__main__":
 
     # Define HMC parameters
     kernel_width = 0.1
-    n_chains = 1000
-    n_iters = 200
+    n_chains = 10
+    n_iters = 20
     burnin = n_iters // 2
     n_leapfrogs = 5
 
@@ -44,20 +44,21 @@ if __name__ == "__main__":
                  target_acceptance_rate=0.9)
     x = tf.Variable(tf.zeros([n_chains, n_x]), trainable=False, name='x')
     sample_op, hmc_info = hmc.sample(model, {}, {'x': x})
-
+    # print(hmc_info.orig_hamiltonian, hmc_info.hamiltonian)
     # Run the inference
+    print("init??")
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         samples = []
         print('Sampling...')
         for i in range(n_iters):
-            _, x_sample, acc, ss = sess.run(
+            _, x_sample, acc, ss, OH, H = sess.run(
                 [sample_op, hmc_info.samples['x'], hmc_info.acceptance_rate,
-                 hmc_info.updated_step_size],
+                 hmc_info.updated_step_size, hmc_info.orig_hamiltonian, hmc_info.hamiltonian],
                 feed_dict={adapt_step_size: i < burnin // 2,
                            adapt_mass: i < burnin // 2})
-            print('Sample {}: Acceptance rate = {}, updated step size = {}'
-                  .format(i, np.mean(acc), ss))
+            print('Sample {}: Acceptance rate = {}, updated step size = {}, oh{}, '
+                  .format(i, np.mean(acc), ss, OH - H))
             if i >= burnin:
                 samples.append(x_sample)
         print('Finished.')

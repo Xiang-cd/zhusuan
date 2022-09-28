@@ -134,8 +134,8 @@ class TestImportanceWeightedObjective(tf.test.TestCase):
             with self.session(use_gpu=True) as sess:
                 g1 = sess.run(vimco_grads)
                 g2 = sess.run(sgvb_grads)
-                # print('vimco_grads:', g1)
-                # print('sgvb_grads:', g2)
+                print('vimco_grads:', g1)
+                print('sgvb_grads:', g2)
                 self.assertAllClose(g1, g2, threshold, threshold)
 
         _check_vimco(0., 1., 1e-2)

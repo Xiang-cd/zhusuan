@@ -27,11 +27,20 @@ def velocity(momentum, mass):
     return map(lambda z: z[0] / z[1], zip(momentum, mass))
 
 
-def hamiltonian(q, p, log_posterior, mass, data_axes):
-    potential = -log_posterior(q)
+def hamiltonian(q, p, log_posterior, mass, data_axes, sess=None):
+    if sess:
+        init = tf.initialize_all_variables()
+        sess.run(init)
+    potential = -log_posterior(q, sess)
+    if sess:
+        print("ootential", potential.eval())    
     kinetic = 0.5 * tf.add_n(
         [tf.reduce_sum(tf.square(momentum) / m, axis)
          for momentum, m, axis in zip(p, mass, data_axes)])
+    if sess:
+        print("data_axies", data_axes)
+        print("kinetic", kinetic.eval())
+        
     return potential + kinetic, -potential
 
 
@@ -43,11 +52,16 @@ def leapfrog_integrator(q, p, step_size1, step_size2, grad, mass):
     return q, p
 
 
-def get_acceptance_rate(q, p, new_q, new_p, log_posterior, mass, data_axes):
+def get_acceptance_rate(q, p, new_q, new_p, log_posterior, mass, data_axes, sess=None):
+    if sess:
+        init = tf.initialize_all_variables()
+        sess.run(init)
     old_hamiltonian, old_log_prob = hamiltonian(
-        q, p, log_posterior, mass, data_axes)
+        q, p, log_posterior, mass, data_axes, sess)
     new_hamiltonian, new_log_prob = hamiltonian(
         new_q, new_p, log_posterior, mass, data_axes)
+    if sess:
+        print("diff", tf.reduce_sum(old_hamiltonian-new_hamiltonian).eval())
     old_log_prob = tf.check_numerics(
         old_log_prob,
         'HMC: old_log_prob has numeric errors! Try better initialization.')
@@ -379,7 +393,7 @@ class HMC:
         update_step_size = tf.assign(self.step_size, new_step_size)
         return tf.stop_gradient(update_step_size)
 
-    def sample(self, meta_bn, observed, latent):
+    def sample(self, meta_bn, observed, latent, sess=None):
         """
         Return the sampling `Operation` that runs a HMC iteration and
         the statistics collected during it, given the log joint function (or a
@@ -408,7 +422,8 @@ class HMC:
         :return: A :class:`HMCInfo` instance that collects sampling statistics
             during an iteration.
         """
-
+        if sess:
+            sess.run(tf.initialize_all_variables()) 
         if callable(meta_bn):
             # TODO: raise warning
             self._log_joint = meta_bn
@@ -423,12 +438,21 @@ class HMC:
                                 .format(latent_k[i]))
         self.q = copy(latent_v)
 
-        def get_log_posterior(var_list):
+        def get_log_posterior(var_list, sess=None):
+            if sess:
+                sess.run(tf.initialize_all_variables()) 
             joint_obs = merge_dicts(dict(zip(latent_k, var_list)), observed)
-            return self._log_joint(joint_obs)
+            ret = self._log_joint(joint_obs)
+            return ret
 
-        def get_gradient(var_list):
+        def get_gradient(var_list, sess= None):
+            if sess:
+                init = tf.initialize_all_variables()
+                sess.run(init) 
+        
             log_p = get_log_posterior(var_list)
+            if sess:
+                 print(kinetic.eval())
             return tf.gradients(log_p, var_list)
 
         self.static_shapes = [q.get_shape() for q in self.q]
@@ -445,6 +469,9 @@ class HMC:
         self.data_shapes = [
             tf.TensorShape([1] * self.n_chain_dims).concatenate(
                 q.get_shape()[self.n_chain_dims:]) for q in self.q]
+        if sess:
+            print("n_chain_dim", self.n_chain_dims)
+            print("data shapes", self.data_shapes)
         self.data_axes = [list(range(self.n_chain_dims, len(data_shape)))
                           for data_shape in self.data_shapes]
 
@@ -480,7 +507,7 @@ class HMC:
             old_hamiltonian, new_hamiltonian, old_log_prob, new_log_prob, \
                 acceptance_rate = get_acceptance_rate(
                     self.q, p, current_q, current_p,
-                    get_log_posterior, mass, self.data_axes)
+                    get_log_posterior, mass, self.data_axes, sess)
 
             u01 = tf.random_uniform(shape=tf.shape(acceptance_rate))
             if_accept = tf.less(u01, acceptance_rate)

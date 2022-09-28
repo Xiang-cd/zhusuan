@@ -29,11 +29,18 @@ def sample_error_with(sampler, sess, n_chains=1, n_iters=80000, thinning=50,
         tf.zeros([n_chains], dtype=dtype),
         trainable=False,
         name='x', dtype=dtype)
-    sample_op, _ = sampler.sample(log_joint, {}, {'x': x})
+    if isinstance(sampler, zs.HMC):
+        sample_op, hmc_info = sampler.sample(log_joint, {}, {'x': x}, sess)
+    else:
+        sample_op, hmc_info = sampler.sample(log_joint, {}, {'x': x}) 
+
 
     # Run the inference
     sess.run(tf.global_variables_initializer())
     samples = []
+    if isinstance(sampler, zs.HMC):
+        print("????")
+        # print((hmc_info.orig_hamiltonian - hmc_info.hamiltonian).eval())
     for t in range(n_iters):
         _, x_sample = sess.run([sample_op, x])
         if np.isnan(x_sample.sum()):
@@ -59,6 +66,7 @@ class TestMCMC(tf.test.TestCase):
         sampler = zs.HMC(step_size=0.01, n_leapfrogs=10)
         with self.session() as sess:
             e = sample_error_with(sampler, sess, n_chains=100, n_iters=1000)
+            print(e)
             self.assertLessEqual(e, 0.030)
 
 
@@ -86,3 +94,11 @@ class TestSGMCMC(tf.test.TestCase):
         with self.test_session() as sess:
             e = sample_error_with(sampler, sess, n_chains=100, n_iters=8000)
             self.assertLessEqual(e, 0.016)
+
+import unittest
+if __name__ == '__main__':
+    suite = unittest.TestSuite()
+    suite.addTest(TestMCMC('test_hmc'))
+ 
+    #suite =  unittest.TestLoader().loadTestsFromTestCase(MyTest)
+    unittest.TextTestRunner(verbosity=2).run(suite)
